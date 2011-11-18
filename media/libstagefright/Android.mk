@@ -79,6 +79,10 @@ ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 	LOCAL_C_INCLUDES += $(TOP)/hardware/qcom/display/libqcomui
 endif
 
+ifeq ($(TARGET_USES_QCOM_LPA),true)
+	LOCAL_SRC_FILES += LPAPlayer.cpp
+endif
+
 LOCAL_C_INCLUDES+= \
 	$(JNI_H_INCLUDE) \
         $(TOP)/frameworks/base/include/media/stagefright/openmax \

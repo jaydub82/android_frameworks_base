@@ -38,6 +38,7 @@
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/AudioPlayer.h>
+#include <media/stagefright/LPAPlayer.h>
 #include <media/stagefright/DataSource.h>
 #include <media/stagefright/FileSource.h>
 #include <media/stagefright/MediaBuffer.h>
@@ -52,6 +53,9 @@
 #include <gui/SurfaceTextureClient.h>
 #include <surfaceflinger/ISurfaceComposer.h>
 
+#include <cutils/properties.h>
+
+#include <media/stagefright/foundation/ALooper.h>
 #include <media/stagefright/foundation/AMessage.h>
 
 #include <cutils/properties.h>
@@ -904,7 +908,45 @@ status_t AwesomePlayer::play_l() {
     if (mAudioSource != NULL) {
         if (mAudioPlayer == NULL) {
             if (mAudioSink != NULL) {
-                mAudioPlayer = new AudioPlayer(mAudioSink, this);
+                sp<MetaData> format = mAudioTrack->getFormat();
+                const char *mime;
+                bool success = format->findCString(kKeyMIMEType, &mime);
+                CHECK(success);
+
+                int64_t durationUs;
+                success = format->findInt64(kKeyDuration, &durationUs);
+                /*
+                 * Some clips may not have kKeyDuration set, especially so for clips in a MP3
+                 * container with the Frames field absent in the Xing header.
+                 */
+                if (!success)
+                    durationUs = 0;
+
+                LOGV("LPAPlayer::getObjectsAlive() %d",LPAPlayer::objectsAlive);
+
+                char lpaDecode[128];
+                property_get("lpa.decode",lpaDecode,"0");
+                char lpaStagefright[128];
+                property_get("lpa.use-stagefright",lpaStagefright,"0");
+                if(strcmp("true",lpaDecode) == 0 && strcmp("true",lpaStagefright) == 0)
+                {
+                    LOGV("LPAPlayer::getObjectsAlive() %d",LPAPlayer::objectsAlive);
+                    if ( durationUs > 60000000 && (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG) || !strcasecmp(mime,MEDIA_MIMETYPE_AUDIO_AAC)) && LPAPlayer::objectsAlive == 0 && mVideoSource == NULL) {
+                        LOGE("LPAPlayer created, LPA MODE detected mime %s duration %d\n", mime, durationUs);
+                        bool initCheck =  false;
+                        mAudioPlayer = new LPAPlayer(mAudioSink, initCheck, this);
+                        if(!initCheck) {
+                            delete mAudioPlayer;
+                            mAudioPlayer = NULL;
+                        }
+                    }
+                }
+                if(mAudioPlayer == NULL) {
+                    LOGE("AudioPlayer created, Non-LPA mode mime %s duration %d\n", mime, durationUs);
+                    mAudioPlayer = new AudioPlayer(mAudioSink, this);
+                }
+
+                LOGV("Setting Audio source");
                 mAudioPlayer->setSource(mAudioSource);
 
                 mTimeSource = mAudioPlayer;
