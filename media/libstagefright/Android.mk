@@ -80,7 +80,16 @@ ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 endif
 
 ifeq ($(TARGET_USES_QCOM_LPA),true)
+ifeq ($(BOARD_USES_ALSA_AUDIO),true)
+	LOCAL_SRC_FILES += LPAPlayerALSA.cpp
+	LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/mm-audio/libalsa-intf
+	LOCAL_C_INCLUDES += $(TOP)/kernel/include/sound
+	LOCAL_C_INCLUDES += $(TOP)/hardware/libhardware_legacy/include
+	LOCAL_SHARED_LIBRARIES += libalsa-intf
+	LOCAL_SHARED_LIBRARIES += libhardware_legacy
+else
 	LOCAL_SRC_FILES += LPAPlayer.cpp
+endif
 endif
 
 LOCAL_C_INCLUDES+= \
