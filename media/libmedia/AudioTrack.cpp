@@ -181,7 +181,6 @@ AudioTrack::~AudioTrack()
             mAudioTrack.clear();
         }
         if(mAudioSession >= 0) {
-#ifdef EFFECT_ENABLED
             const sp<IAudioFlinger>& audioFlinger = AudioSystem::get_audio_flinger();
             if (audioFlinger != 0) {
                 status_t status;
@@ -190,7 +189,7 @@ AudioTrack::~AudioTrack()
             } else {
                 LOGE("Could not get audioflinger");
             }
-#endif
+
             AudioSystem::closeSession(mAudioSession);
             mAudioSession = -1;
         }
@@ -387,8 +386,6 @@ status_t AudioTrack::set(
     mAudioTrack = NULL;
     mAudioSession = output;
 
-    /*Effects code will be enabled in the next gerrit*/
-    /*
     mSessionId = sessionId;
     mAuxEffectId = 0;
 
@@ -406,8 +403,6 @@ status_t AudioTrack::set(
     if(status != NO_ERROR) {
         LOGE("createSession returned with status %d", status);
     }
-    */
-
     /* Make the track active and start output */
     android_atomic_or(1, &mActive);
     AudioSystem::startOutput(output, (audio_stream_type_t)mStreamType);
