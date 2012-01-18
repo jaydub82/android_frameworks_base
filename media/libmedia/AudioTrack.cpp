@@ -179,6 +179,7 @@ AudioTrack::~AudioTrack()
         }
         if(mAudioTrack != NULL) {
             mAudioTrack.clear();
+            AudioSystem::releaseAudioSessionId(mSessionId);
         }
         if(mAudioSession >= 0) {
             const sp<IAudioFlinger>& audioFlinger = AudioSystem::get_audio_flinger();
@@ -195,7 +196,6 @@ AudioTrack::~AudioTrack()
         }
 
         IPCThreadState::self()->flushCommands();
-        AudioSystem::releaseAudioSessionId(mSessionId);
     }
 }
 
