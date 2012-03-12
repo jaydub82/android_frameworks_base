@@ -871,14 +871,20 @@ status_t AudioFlinger::setStreamVolume(int stream, float value, int output)
 
     if( (mLPAOutput != NULL) &&
         (mLPAStreamType == stream) ) {
-        mLPAOutput->stream->set_volume(mLPAOutput->stream,value,value);
+         mLPAOutput->stream->set_volume(mLPAOutput->stream,mLPALeftVol*value,
+                                          mLPARightVol*value);
+         mStreamTypes[stream].volume = value;
     }
 
     PlaybackThread *thread = NULL;
     if (output) {
         thread = checkPlaybackThread_l(output);
         if (thread == NULL) {
-            return BAD_VALUE;
+            if (mLPAOutput == NULL) {
+               return BAD_VALUE;
+            } else {
+               return NO_ERROR;
+            }
         }
     }
 
@@ -5330,6 +5336,7 @@ status_t AudioFlinger::closeSession(int output)
         mLPAOutput = NULL;
         mLPAHandle = -1;
         mLPAStreamIsActive = false;
+        mLPAStreamType = -1;
     }
 
     return NO_ERROR;
