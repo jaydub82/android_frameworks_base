@@ -87,6 +87,7 @@ ifeq ($(BOARD_USES_ALSA_AUDIO),true)
 	LOCAL_C_INCLUDES += $(TOP)/hardware/libhardware_legacy/include
 	LOCAL_SHARED_LIBRARIES += libalsa-intf
 	LOCAL_SHARED_LIBRARIES += libhardware_legacy
+	LOCAL_SHARED_LIBRARIES += libpowermanager
 else
 	LOCAL_SRC_FILES += LPAPlayer.cpp
 endif
