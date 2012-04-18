@@ -90,6 +90,11 @@ ifeq ($(BOARD_USES_ALSA_AUDIO),true)
 	LOCAL_SHARED_LIBRARIES += libpowermanager
 else
 	LOCAL_SRC_FILES += LPAPlayer.cpp
+ifeq ($(TARGET_USES_ION_AUDIO),true)
+	LOCAL_SRC_FILES += LPAPlayerION.cpp
+else
+	LOCAL_SRC_FILES += LPAPlayerPMEM.cpp
+endif
 endif
 endif
 
