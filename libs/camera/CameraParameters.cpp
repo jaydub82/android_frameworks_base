@@ -24,6 +24,10 @@
 
 namespace android {
 // Parameter keys to communicate between camera application and driver.
+// dferg HACKS!
+const char CameraParameters::KEY_WDR[] = "hack-wdr";
+const char CameraParameters::KEY_ANTI_SHAKE_MODE[] = "hack-anti-shake-mode";
+
 const char CameraParameters::KEY_PREVIEW_SIZE[] = "preview-size";
 const char CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES[] = "preview-size-values";
 #ifdef QCOM_HARDWARE

@@ -128,6 +128,10 @@ public:
     void dump() const;
     status_t dump(int fd, const Vector<String16>& args) const;
 
+// dferg HACKS!
+    static const char KEY_WDR[];
+    static const char KEY_ANTI_SHAKE_MODE[];
+
     // Parameter keys to communicate between camera application and driver.
     // The access (read/write, read only, or write only) is viewed from the
     // perspective of applications, not driver.
