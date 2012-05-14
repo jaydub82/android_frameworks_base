@@ -32,11 +32,11 @@ import com.android.internal.telephony.RILConstants;
  *
  * {@hide}
  */
-public class HercSkyQualcommUiccRIL extends LGEQualcommUiccRIL implements CommandsInterface {
+public class SamsungQualcommUiccRIL extends LGEQualcommUiccRIL implements CommandsInterface {
     boolean RILJ_LOGV = true;
     boolean RILJ_LOGD = true;
 
-    public HercSkyQualcommUiccRIL(Context context, int networkMode, int cdmaSubscription) {
+    public SamsungQualcommUiccRIL(Context context, int networkMode, int cdmaSubscription) {
         super(context, networkMode, cdmaSubscription);
     }
 
