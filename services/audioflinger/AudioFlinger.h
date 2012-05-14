@@ -87,6 +87,15 @@ public:
                                 int *sessionId,
                                 status_t *status);
 
+    virtual     void        createSession(
+                                pid_t pid,
+                                uint32_t sampleRate,
+                                int channelCount,
+                                int *sessionId,
+                                status_t *status);
+
+    virtual     void        deleteSession();
+
     virtual     uint32_t    sampleRate(int output) const;
     virtual     int         channelCount(int output) const;
     virtual     uint32_t    format(int output) const;
@@ -99,6 +108,7 @@ public:
     virtual     float       masterVolume() const;
     virtual     bool        masterMute() const;
 
+    virtual     status_t    setSessionVolume(int stream, float left, float right);
     virtual     status_t    setStreamVolume(int stream, float value, int output);
     virtual     status_t    setStreamMute(int stream, bool muted);
 
@@ -125,6 +135,18 @@ public:
                                     uint32_t *pLatencyMs,
                                     uint32_t flags);
 
+    virtual int openSession(   uint32_t *pDevices,
+                                    uint32_t *pFormat,
+                                    uint32_t flags,
+                                    int32_t  streamType,
+                                    int32_t  sessionId);
+
+    virtual status_t pauseSession(int output, int32_t  streamType);
+
+    virtual status_t resumeSession(int output, int32_t  streamType);
+
+    virtual status_t closeSession(int output);
+
     virtual int openDuplicateOutput(int output1, int output2);
 
     virtual status_t closeOutput(int output);
@@ -146,6 +168,8 @@ public:
     virtual status_t setVoiceVolume(float volume);
 
     virtual status_t getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames, int output);
+
+    virtual status_t deregisterClient(const sp<IAudioFlingerClient>& client);
 
     virtual int newAudioSessionId();
 
@@ -211,6 +235,9 @@ public:
                 uint32_t    getMode() { return mMode; }
 
                 bool        btNrecIsOff() { return mBtNrecIsOff; }
+                void applyEffectsOn(int16_t *buffer1,
+                                    int16_t *buffer2,
+                                    int size);
 
 private:
                             AudioFlinger();
@@ -248,7 +275,7 @@ private:
     public:
                             NotificationClient(const sp<AudioFlinger>& audioFlinger,
                                                 const sp<IAudioFlingerClient>& client,
-                                                pid_t pid);
+                                                sp<IBinder> binder);
         virtual             ~NotificationClient();
 
                 sp<IAudioFlingerClient>    client() { return mClient; }
@@ -261,7 +288,7 @@ private:
                             NotificationClient& operator = (const NotificationClient&);
 
         sp<AudioFlinger>        mAudioFlinger;
-        pid_t                   mPid;
+        sp<IBinder>             mBinder;
         sp<IAudioFlingerClient> mClient;
     };
 
@@ -424,6 +451,7 @@ private:
         virtual     status_t    setParameters(const String8& keyValuePairs);
         virtual     String8     getParameters(const String8& keys) = 0;
         virtual     void        audioConfigChanged_l(int event, int param = 0) = 0;
+                    void        effectConfigChanged();
                     void        sendConfigEvent(int event, int param = 0);
                     void        sendConfigEvent_l(int event, int param = 0);
                     void        processConfigEvents();
@@ -928,7 +956,7 @@ private:
 
 
                 void        removeClient_l(pid_t pid);
-                void        removeNotificationClient(pid_t pid);
+                void        removeNotificationClient(sp<IBinder> binder);
 
 
     // record thread
@@ -1087,7 +1115,10 @@ private:
                          void *pReplyData);
 
         void reset_l();
-        status_t configure();
+        status_t configure(bool isForLPA = false,
+                           int sampleRate = 0,
+                           int channelCount = 0,
+                           int frameCount = 0);
         status_t init();
         uint32_t state() {
             return mState;
@@ -1130,6 +1161,9 @@ private:
         bool             isPinned() { return mPinned; }
         void             unPin() { mPinned = false; }
 
+        bool             isOnLPA() { return mIsForLPA;}
+        void             setLPAFlag(bool isForLPA) {mIsForLPA = isForLPA; }
+
         status_t         dump(int fd, const Vector<String16>& args);
 
     protected:
@@ -1161,6 +1195,7 @@ private:
                                         // sending disable command.
         uint32_t mDisableWaitCnt;       // current process() calls count during disable period.
         bool     mSuspended;            // effect is suspended: temporarily disabled by framework
+        bool     mIsForLPA;
     };
 
     // The EffectHandle class implements the IEffect interface. It provides resources
@@ -1263,12 +1298,14 @@ private:
 
         status_t addEffect_l(const sp<EffectModule>& handle);
         size_t removeEffect_l(const sp<EffectModule>& handle);
+        size_t getNumEffects() { return mEffects.size(); }
 
         int sessionId() { return mSessionId; }
         void setSessionId(int sessionId) { mSessionId = sessionId; }
 
         sp<EffectModule> getEffectFromDesc_l(effect_descriptor_t *descriptor);
         sp<EffectModule> getEffectFromId_l(int id);
+        sp<EffectModule> getEffectFromIndex_l(int idx);
         sp<EffectModule> getEffectFromType_l(const effect_uuid_t *type);
         bool setVolume_l(uint32_t *left, uint32_t *right);
         void setDevice_l(uint32_t device);
@@ -1311,6 +1348,8 @@ private:
                                               bool enabled);
 
         status_t dump(int fd, const Vector<String16>& args);
+        bool isForLPATrack() {return mIsForLPATrack; }
+        void setLPAFlag(bool flag) {mIsForLPATrack = flag;}
 
     protected:
         friend class AudioFlinger;
@@ -1353,6 +1392,7 @@ private:
         uint32_t mNewLeftVolume;       // new volume on left channel
         uint32_t mNewRightVolume;      // new volume on right channel
         uint32_t mStrategy; // strategy for this effect chain
+        bool     mIsForLPATrack;
         // mSuspendedEffects lists all effect currently suspended in the chain
         // use effect type UUID timelow field as key. There is no real risk of identical
         // timeLow fields among effect type UUIDs.
@@ -1396,17 +1436,31 @@ private:
 
                 DefaultKeyedVector< int, sp<PlaybackThread> >  mPlaybackThreads;
                 PlaybackThread::stream_type_t       mStreamTypes[AUDIO_STREAM_CNT];
+                float                               mLPALeftVol;
+                float                               mLPARightVol;
                 float                               mMasterVolume;
                 bool                                mMasterMute;
 
                 DefaultKeyedVector< int, sp<RecordThread> >    mRecordThreads;
 
-                DefaultKeyedVector< pid_t, sp<NotificationClient> >    mNotificationClients;
+                DefaultKeyedVector< sp<IBinder>, sp<NotificationClient> >    mNotificationClients;
                 volatile int32_t                    mNextUniqueId;
                 uint32_t                            mMode;
                 bool                                mBtNrecIsOff;
+                int                                 mA2DPHandle; // Handle to notify client (MIO)
+                int                                 mLPAStreamType;
+                AudioStreamOut                     *mLPAOutput;
+                audio_io_handle_t                   mLPAHandle;
+                int                                 mLPAStreamIsActive;
+                volatile bool                       mIsEffectConfigChanged;
 
                 Vector<AudioSessionRef*> mAudioSessionRefs;
+
+                public:
+                int                                 mLPASessionId;
+                sp<EffectChain>                     mLPAEffectChain;
+                int                                 mLPASampleRate;
+                int                                 mLPANumChannels;
 };
 
 

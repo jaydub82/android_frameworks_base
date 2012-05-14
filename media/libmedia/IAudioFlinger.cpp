@@ -40,6 +40,7 @@ enum {
     SET_MASTER_MUTE,
     MASTER_VOLUME,
     MASTER_MUTE,
+    SET_SESSION_VOLUME,
     SET_STREAM_VOLUME,
     SET_STREAM_MUTE,
     STREAM_VOLUME,
@@ -52,8 +53,12 @@ enum {
     REGISTER_CLIENT,
     GET_INPUTBUFFERSIZE,
     OPEN_OUTPUT,
+    OPEN_SESSION,
     OPEN_DUPLICATE_OUTPUT,
     CLOSE_OUTPUT,
+    PAUSE_SESSION,
+    RESUME_SESSION,
+    CLOSE_SESSION,
     SUSPEND_OUTPUT,
     RESTORE_OUTPUT,
     OPEN_INPUT,
@@ -69,7 +74,11 @@ enum {
     QUERY_EFFECT,
     GET_EFFECT_DESCRIPTOR,
     CREATE_EFFECT,
-    MOVE_EFFECTS
+    MOVE_EFFECTS,
+    SET_FM_VOLUME,
+    CREATE_SESSION,
+    DELETE_SESSION,
+    APPLY_EFFECTS
 };
 
 class BpAudioFlinger : public BpInterface<IAudioFlinger>
@@ -125,6 +134,61 @@ public:
             *status = lStatus;
         }
         return track;
+    }
+
+    virtual void createSession(
+                        pid_t pid,
+                        uint32_t sampleRate,
+                        int channelCount,
+                        int *sessionId,
+                        status_t *status)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(pid);
+        data.writeInt32(sampleRate);
+        data.writeInt32(channelCount);
+        int lSessionId = 0;
+        if (sessionId != NULL) {
+            lSessionId = *sessionId;
+        }
+        data.writeInt32(lSessionId);
+        status_t lStatus = remote()->transact(CREATE_SESSION, data, &reply);
+        if (lStatus != NO_ERROR) {
+            LOGE("openRecord error: %s", strerror(-lStatus));
+        } else {
+            lSessionId = reply.readInt32();
+            if (sessionId != NULL) {
+                *sessionId = lSessionId;
+            }
+            lStatus = reply.readInt32();
+        }
+        if (status) {
+            *status = lStatus;
+        }
+    }
+
+    virtual void deleteSession()
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        status_t lStatus = remote()->transact(DELETE_SESSION, data, &reply);
+        if (lStatus != NO_ERROR) {
+            LOGE("deleteSession error: %s", strerror(-lStatus));
+        }
+    }
+
+    virtual void applyEffectsOn(int16_t *inBuffer, int16_t *outBuffer, int size)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32((int32_t)inBuffer);
+        data.writeInt32((int32_t)outBuffer);
+        data.writeInt32(size);
+        status_t lStatus = remote()->transact(APPLY_EFFECTS, data, &reply);
+        if (lStatus != NO_ERROR) {
+            LOGE("applyEffectsOn error: %s", strerror(-lStatus));
+        }
     }
 
     virtual sp<IAudioRecord> openRecord(
@@ -246,6 +310,17 @@ public:
         Parcel data, reply;
         data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
         remote()->transact(MASTER_MUTE, data, &reply);
+        return reply.readInt32();
+    }
+
+    virtual status_t setSessionVolume(int stream, float left, float right)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(stream);
+        data.writeFloat(left);
+        data.writeInt32(right);
+        remote()->transact(SET_SESSION_VOLUME, data, &reply);
         return reply.readInt32();
     }
 
@@ -390,6 +465,62 @@ public:
         if (pLatencyMs) *pLatencyMs = latency;
         return output;
     }
+
+    virtual int openSession(uint32_t *pDevices,
+                            uint32_t *pFormat,
+                            uint32_t flags,
+                            int32_t  stream,
+                            int32_t  sessionId)
+    {
+        Parcel data, reply;
+        uint32_t devices = pDevices ? *pDevices : 0;
+        uint32_t format = pFormat ? *pFormat : 0;
+
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(devices);
+        data.writeInt32(format);
+        data.writeInt32(flags);
+        data.writeInt32(stream);
+        data.writeInt32(sessionId);
+        remote()->transact(OPEN_SESSION, data, &reply);
+        int  output = reply.readInt32();
+        LOGV("openOutput() returned output, %p", output);
+        devices = reply.readInt32();
+        if (pDevices) *pDevices = devices;
+        format = reply.readInt32();
+        if (pFormat) *pFormat = format;
+        return output;
+    }
+
+    virtual status_t pauseSession(int output, int32_t  stream)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(output);
+        data.writeInt32(stream);
+        remote()->transact(PAUSE_SESSION, data, &reply);
+        return reply.readInt32();
+    }
+
+    virtual status_t resumeSession(int output, int32_t  stream)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(output);
+        data.writeInt32(stream);
+        remote()->transact(RESUME_SESSION, data, &reply);
+        return reply.readInt32();
+    }
+
+    virtual status_t closeSession(int output)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32(output);
+        remote()->transact(CLOSE_SESSION, data, &reply);
+        return reply.readInt32();
+    }
+
 
     virtual int openDuplicateOutput(int output1, int output2)
     {
@@ -694,6 +825,31 @@ status_t BnAudioFlinger::onTransact(
             reply->writeStrongBinder(track->asBinder());
             return NO_ERROR;
         } break;
+        case CREATE_SESSION: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            pid_t pid = data.readInt32();
+            uint32_t sampleRate = data.readInt32();
+            int channelCount = data.readInt32();
+            int sessionId = data.readInt32();
+            status_t status;
+            createSession(pid, sampleRate, channelCount, &sessionId, &status);
+            reply->writeInt32(sessionId);
+            reply->writeInt32(status);
+            return NO_ERROR;
+        } break;
+        case DELETE_SESSION: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            deleteSession();
+            return NO_ERROR;
+        } break;
+        case APPLY_EFFECTS: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            int16_t *inBuffer = (int16_t*)data.readInt32();
+            int16_t *outBuffer = (int16_t*)data.readInt32();
+            int size = data.readInt32();
+            applyEffectsOn(inBuffer, outBuffer, size);
+            return NO_ERROR;
+        } break;
         case OPEN_RECORD: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             pid_t pid = data.readInt32();
@@ -755,6 +911,14 @@ status_t BnAudioFlinger::onTransact(
         case MASTER_MUTE: {
             CHECK_INTERFACE(IAudioFlinger, data, reply);
             reply->writeInt32( masterMute() );
+            return NO_ERROR;
+        } break;
+        case SET_SESSION_VOLUME: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            int stream = data.readInt32();
+            float left = data.readFloat();
+            float right = data.readFloat();
+            reply->writeInt32( setSessionVolume(stream, left, right) );
             return NO_ERROR;
         } break;
         case SET_STREAM_VOLUME: {
@@ -851,6 +1015,45 @@ status_t BnAudioFlinger::onTransact(
             reply->writeInt32(format);
             reply->writeInt32(channels);
             reply->writeInt32(latency);
+            return NO_ERROR;
+        } break;
+        case OPEN_SESSION: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            uint32_t devices = data.readInt32();
+            uint32_t format = data.readInt32();
+            uint32_t flags = data.readInt32();
+            int32_t  stream = data.readInt32();
+            int32_t  sessionId = data.readInt32();
+            int output = openSession(&devices,
+                                     &format,
+                                     flags,
+                                     stream,
+                                     sessionId);
+            LOGV("OPEN_SESSION output, %p", output);
+            reply->writeInt32(output);
+            reply->writeInt32(devices);
+            reply->writeInt32(format);
+            return NO_ERROR;
+        } break;
+        case PAUSE_SESSION: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            int output = data.readInt32();
+            int32_t  stream = data.readInt32();
+            reply->writeInt32(pauseSession(output,
+                                           stream));
+            return NO_ERROR;
+        } break;
+        case RESUME_SESSION: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            int output = data.readInt32();
+            int32_t  stream = data.readInt32();
+            reply->writeInt32(resumeSession(output,
+                                           stream));
+            return NO_ERROR;
+        } break;
+        case CLOSE_SESSION: {
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            reply->writeInt32(closeSession(data.readInt32()));
             return NO_ERROR;
         } break;
         case OPEN_DUPLICATE_OUTPUT: {
