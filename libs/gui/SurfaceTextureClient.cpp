@@ -284,7 +284,6 @@ int SurfaceTextureClient::query(int what, int* value) const {
                 *value = mTransformHint;
 #endif
                 return NO_ERROR;
-#endif
         }
     }
     return mSurfaceTexture->query(what, value);
